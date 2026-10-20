@@ -82,9 +82,11 @@ final readonly class SafeHtml
     public static function cleanInput(Request $request, string ...$fields): void
     {
         $safe = Container::getInstance()->make(self::class);
-        $input = $request->input();
 
         foreach ($fields as $field) {
+            // Read each time: a parent named after its child would merge the raw child back.
+            $input = $request->input();
+
             // Arr::has() doesn't expand *, so those items would stay raw.
             if (str_contains($field, '*')) {
                 throw new InvalidArgumentException("Name each item (blocks.0.body), not {$field}.");

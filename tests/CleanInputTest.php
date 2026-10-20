@@ -49,6 +49,15 @@ final class CleanInputTest extends TestCase
         $this->assertSame(['bio' => '<p>Me</p>', 'name' => 'Ann'], $request->input('meta'));
     }
 
+    public function test_a_parent_named_after_its_child_keeps_the_child_clean(): void
+    {
+        $request = Request::create('/', 'POST', ['meta' => ['bio' => '<p onclick="x">Me</p>']]);
+
+        SafeHtml::cleanInput($request, 'meta.bio', 'meta');
+
+        $this->assertSame(['bio' => '<p>Me</p>'], $request->input('meta'));
+    }
+
     public function test_a_wildcard_is_refused_rather_than_left_raw(): void
     {
         $this->expectException(InvalidArgumentException::class);
