@@ -7,15 +7,11 @@ It also ships `MaxHtmlLength`, a length rule for cleaned HTML that counts `&#039
 
 ## Install
 
-Needs PHP 8.4+ and Laravel 13. The package is private: add its repository and a GitHub token that can read it.
+Needs PHP 8.4+ and Laravel 13.
 
 ```bash
-composer config repositories.laravel-safe-html vcs https://github.com/ismailnakkar/laravel-safe-html.git
-composer config --global github-oauth.github.com <token>
 composer require ismailnakkar/laravel-safe-html
 ```
-
-CI and deploys need the token too, e.g. `COMPOSER_AUTH='{"github-oauth":{"github.com":"<token>"}}'`.
 
 There is nothing to publish or register.
 
@@ -32,10 +28,7 @@ class AnnouncementRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
-        // Only when sent: merging null would erase the column on an update that leaves the field out.
-        if ($this->has('content')) {
-            $this->merge(['content' => app(SafeHtml::class)->clean($this->input('content'))]);
-        }
+        SafeHtml::cleanInput($this, 'content');
     }
 
     public function rules(): array
@@ -44,6 +37,11 @@ class AnnouncementRequest extends FormRequest
     }
 }
 ```
+
+`cleanInput()` runs `clean()` on each field you name: `SafeHtml::cleanInput($this, 'content', 'bio')`. A field that
+wasn't sent stays unsent, so an update without it keeps the column. A dotted name (`'meta.bio'`) reaches a nested field;
+a wildcard throws, so name each item. Call it in `prepareForValidation()`, so the rules and `validated()` see the clean
+value.
 
 `content` is now clean in `validated()`, so print the saved column raw:
 

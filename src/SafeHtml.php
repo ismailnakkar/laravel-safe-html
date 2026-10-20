@@ -7,7 +7,11 @@ namespace SafeHtml;
 use Dom\HTMLDocument;
 use Dom\Node;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Container\Container;
 use Illuminate\Http\Exceptions\PostTooLargeException;
+use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use InvalidArgumentException;
 use SplFileInfo;
 use Stringable;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizer;
@@ -72,6 +76,25 @@ final readonly class SafeHtml
 
         // An empty editor still sends markup: <p><br></p>, <p>&nbsp;</p>.
         return $clean === '' || preg_replace('~</?p>|<br />|\s~u', '', $clean) === '' ? null : $clean;
+    }
+
+    /** Cleans the named request fields in place, for prepareForValidation(). A field that wasn't sent stays unsent. */
+    public static function cleanInput(Request $request, string ...$fields): void
+    {
+        $safe = Container::getInstance()->make(self::class);
+        $input = $request->input();
+
+        foreach ($fields as $field) {
+            // Arr::has() doesn't expand *, so those items would stay raw.
+            if (str_contains($field, '*')) {
+                throw new InvalidArgumentException("Name each item (blocks.0.body), not {$field}.");
+            }
+
+            // input(), not has(): has() also sees an uploaded file, which would be cleaned as null and stored.
+            if (Arr::has($input, $field)) {
+                $request->merge([$field => $safe->clean(Arr::get($input, $field))]);
+            }
+        }
     }
 
     /** The package's policy. Symfony's config is immutable: extend the copy this returns and pass it to the constructor. */
