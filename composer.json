@@ -1,0 +1,58 @@
+{
+    "name": "ismailnakkar/laravel-safe-html",
+    "description": "Clean user-typed HTML so it is safe to print with {!! !!} in Laravel, plus a length rule that counts an entity as one character.",
+    "keywords": [
+        "laravel",
+        "html",
+        "sanitizer",
+        "xss",
+        "validation"
+    ],
+    "homepage": "https://github.com/ismailnakkar/laravel-safe-html",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ismail Nakkar",
+            "email": "juge.steam@gmail.com"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/ismailnakkar/laravel-safe-html/issues"
+    },
+    "require": {
+        "php": "^8.4",
+        "ext-dom": "*",
+        "laravel/framework": "^13.0",
+        "symfony/html-sanitizer": "^8.1"
+    },
+    "require-dev": {
+        "fakerphp/faker": "^1.24",
+        "laravel/pint": "^1.27",
+        "orchestra/testbench": "^11.0",
+        "phpstan/phpstan": "^2.3",
+        "phpunit/phpunit": "^12.5.8 || ^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "SafeHtml\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SafeHtml\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "lint": "vendor/bin/pint",
+        "analyse": "vendor/bin/phpstan analyse",
+        "check": [
+            "@lint --test",
+            "@analyse",
+            "@test"
+        ]
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
