@@ -39,9 +39,10 @@ class AnnouncementRequest extends FormRequest
 ```
 
 `cleanInput()` runs `clean()` on each field you name: `SafeHtml::cleanInput($this, 'content', 'bio')`. A field that
-wasn't sent stays unsent, so an update without it keeps the column. A dotted name (`'meta.bio'`) reaches a nested field;
-a wildcard throws, so name each item. Call it in `prepareForValidation()`, so the rules and `validated()` see the clean
-value.
+wasn't sent stays unsent, so an update without it keeps the column. A dotted name (`'meta.bio'`) reaches a nested field,
+and `*` stands for every item at its level, as in a rule (`'translations.*.content'`). A name a rule would read
+differently throws: a top-level `*`, a `*` inside a level (`'b*'`), an escaped dot, `{first}` or `{last}`. Call it in
+`prepareForValidation()`, so the rules and `validated()` see the clean value.
 
 `content` is now clean in `validated()`, so print the saved column raw:
 
@@ -116,7 +117,9 @@ character as stored (`'` is stored as `&#039;`, six characters) where `MaxHtmlLe
 
 ## Upgrading
 
-0.1.0 is the first release.
+### From 0.1
+
+`cleanInput()` takes `*` below the top level (`'blocks.*.body'`) instead of throwing. Nothing to change.
 
 ## Licence
 

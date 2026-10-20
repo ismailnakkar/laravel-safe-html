@@ -8,9 +8,9 @@ use Dom\HTMLDocument;
 use Dom\Node;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 use InvalidArgumentException;
 use SplFileInfo;
 use Stringable;
@@ -78,25 +78,62 @@ final readonly class SafeHtml
         return $clean === '' || preg_replace('~</?p>|<br />|\s~u', '', $clean) === '' ? null : $clean;
     }
 
-    /** Cleans the named request fields in place, for prepareForValidation(). A field that wasn't sent stays unsent. */
+    /**
+     * Cleans the named request fields in place, for prepareForValidation(). A field that wasn't sent stays unsent, and *
+     * stands for every item at its level, as in a rule: 'blocks.*.body'.
+     */
     public static function cleanInput(Request $request, string ...$fields): void
     {
         $safe = Container::getInstance()->make(self::class);
 
         foreach ($fields as $field) {
+            // Refused where a rule of the same name would match items this walk can't, leaving them raw: * inside a
+            // level (a rule's b* matches 'body'), an escaped dot, {first} and {last} (data_get() reads them as an item),
+            // and a top-level *, whose keys are the client's and merge() splits on their dots.
+            if (preg_match('~^\*|[^.]\*|\*[^.]|\\\\\.|\{(first|last)}~', $field)) {
+                throw new InvalidArgumentException("Use * only as a whole level below the top, with no escaped dot, {first} or {last}: {$field}.");
+            }
+
+            $path = explode('.', $field);
+            $top = array_shift($path);
+
             // Read each time: a parent named after its child would merge the raw child back.
+            // input(), not has(): has() also sees an uploaded file, which would be cleaned as null and stored.
             $input = $request->input();
 
-            // Arr::has() doesn't expand *, so those items would stay raw.
-            if (str_contains($field, '*')) {
-                throw new InvalidArgumentException("Name each item (blocks.0.body), not {$field}.");
-            }
-
-            // input(), not has(): has() also sees an uploaded file, which would be cleaned as null and stored.
-            if (Arr::has($input, $field)) {
-                $request->merge([$field => $safe->clean(Arr::get($input, $field))]);
+            // Merged whole, never by its dotted name: a key * matches may hold a dot (translations.f.r), which merge()
+            // would split, leaving the real item raw for the validator, which doesn't split it.
+            if (array_key_exists($top, $input)) {
+                $request->merge([$top => $safe->cleanAt($input[$top], $path)]);
             }
         }
+    }
+
+    /** @param  list<string>  $path */
+    private function cleanAt(mixed $value, array $path): mixed
+    {
+        if ($path === []) {
+            return $this->clean($value);
+        }
+
+        // An app may have merged a collection in; the validator reads through it.
+        if ($value instanceof Arrayable) {
+            $value = $value->toArray();
+        }
+
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $segment = array_shift($path);
+
+        foreach ($segment === '*' ? array_keys($value) : [$segment] as $key) {
+            if (array_key_exists($key, $value)) {
+                $value[$key] = $this->cleanAt($value[$key], $path);
+            }
+        }
+
+        return $value;
     }
 
     /** The package's policy. Symfony's config is immutable: extend the copy this returns and pass it to the constructor. */
