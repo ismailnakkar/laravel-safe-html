@@ -69,6 +69,7 @@ final class SafeHtmlTest extends TestCase
         $this->assertNull($safe->clean('<p><br></p>'));
         $this->assertNull($safe->clean('<p></p>'));
         $this->assertNull($safe->clean('<p>&nbsp;</p>'));
+        $this->assertNull($safe->clean("<p>caf\xE9</p>"));
         // Markup without text is kept: only <p>, <br /> and whitespace count as nothing.
         $this->assertSame('<hr />', $safe->clean('<hr>'));
         $this->assertSame('<p>x</p>', $safe->clean(' <p>x</p> '));

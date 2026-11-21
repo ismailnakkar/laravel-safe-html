@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,7 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The whole grid, on pull requests and when run by hand before a tag. A push to main runs only `newest`.
   php:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -23,9 +26,9 @@ jobs:
         php: ['8.4', '8.5']
         deps: [prefer-lowest, prefer-stable]
 
-    name: PHP ${{ matrix.php }} · ${{ matrix.deps }}
+    name: &name PHP ${{ matrix.php }} · ${{ matrix.deps }}
 
-    steps:
+    steps: &steps
       - uses: actions/checkout@v7
 
       - uses: shivammathur/setup-php@v2
@@ -39,3 +42,15 @@ jobs:
           COMPOSER_POLICY_ADVISORIES_BLOCK: ${{ matrix.deps == 'prefer-lowest' && '0' || '1' }}
 
       - run: composer ${{ matrix.php == '8.5' && matrix.deps == 'prefer-stable' && 'check' || 'test' }}
+
+  # A push to main: the grid's newest row, which also runs the rest of the check.
+  newest:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        include:
+          - { php: '8.5', deps: prefer-stable }
+    name: *name
+    steps: *steps

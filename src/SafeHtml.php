@@ -24,6 +24,24 @@ use Symfony\Component\HtmlSanitizer\Visitor\AttributeSanitizer\AttributeSanitize
 #[Singleton] // An app's own binding still wins.
 final readonly class SafeHtml
 {
+    private const array FORMATTING_ELEMENTS = [
+        'p', 'br', 'hr', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'sub', 'sup',
+        'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    ];
+
+    /** Removed with their contents. Not style, link or meta: Symfony ignores head elements in a body, so they unwrap. */
+    private const array DROPPED_ELEMENTS = [
+        'script', 'iframe', 'object', 'embed', 'applet', 'form', 'input', 'button', 'select', 'option', 'optgroup',
+        'textarea', 'label', 'fieldset', 'template', 'noscript', 'base', 'frame', 'frameset', 'audio', 'video',
+        'source', 'track', 'canvas', 'portal', 'marquee', 'dialog', 'svg', 'math',
+    ];
+
+    /**
+     * Bounds time (100 KB: ~0.5 s), not memory: 10 KB of distinct unclosed <b a=N> and <p>x makes the parser re-open
+     * every <b> in every <p> (1 s, 278 MB). memory_limit is the only ceiling.
+     */
+    private const int MAX_INPUT_BYTES = 100_000;
+
     private HtmlSanitizer $sanitizer;
 
     private int $maxInputLength;
@@ -74,8 +92,17 @@ final readonly class SafeHtml
 
         $clean = trim($this->sanitizer->sanitize($html));
 
-        // An empty editor still sends markup: <p><br></p>, <p>&nbsp;</p>.
-        return $clean === '' || preg_replace('~</?p>|<br />|\s~u', '', $clean) === '' ? null : $clean;
+        return self::isEmptyEditor($clean) ? null : $clean;
+    }
+
+    /**
+     * What an empty editor still sends: nothing but <p>, <br /> and whitespace (<p><br></p>, <p>&nbsp;</p>).
+     *
+     * @phpstan-assert-if-false non-empty-string $html
+     */
+    private static function isEmptyEditor(string $html): bool
+    {
+        return preg_replace('~</?p>|<br />|\s~u', '', $html) === '';
     }
 
     /**
@@ -87,25 +114,32 @@ final readonly class SafeHtml
         $safe = Container::getInstance()->make(self::class);
 
         foreach ($fields as $field) {
-            // Refused where a rule of the same name would match items this walk can't, leaving them raw: * inside a
-            // level (a rule's b* matches 'body'), an escaped dot, {first} and {last} (data_get() reads them as an item),
-            // and a top-level *, whose keys are the client's and merge() splits on their dots.
-            if (preg_match('~^\*|[^.]\*|\*[^.]|\\\\\.|\{(first|last)}~', $field)) {
-                throw new InvalidArgumentException("Use * only as a whole level below the top, with no escaped dot, {first} or {last}: {$field}.");
-            }
+            self::assertWalkable($field);
 
             $path = explode('.', $field);
             $top = array_shift($path);
 
-            // Read each time: a parent named after its child would merge the raw child back.
-            // input(), not has(): has() also sees an uploaded file, which would be cleaned as null and stored.
+            // Read each time: a parent named after its child would merge the raw child back. input(), not has(): has()
+            // also sees an uploaded file, whose null input would be stored over it.
             $input = $request->input();
 
-            // Merged whole, never by its dotted name: a key * matches may hold a dot (translations.f.r), which merge()
-            // would split, leaving the real item raw for the validator, which doesn't split it.
+            // Merged whole, not by its dotted name: a key * matches may hold a dot (translations.f.r), which merge()
+            // would split, leaving the real item raw for the validator.
             if (array_key_exists($top, $input)) {
                 $request->merge([$top => $safe->cleanAt($input[$top], $path)]);
             }
+        }
+    }
+
+    /**
+     * Refuses a name whose rule would match items this walk can't reach, leaving them raw: * inside a level (a rule's
+     * b* matches 'body'), an escaped dot, {first} and {last} (data_get() reads them as an item), and a top-level *,
+     * whose keys are the client's and merge() splits on their dots.
+     */
+    private static function assertWalkable(string $field): void
+    {
+        if (preg_match('~^\*|[^.]\*|\*[^.]|\\\\\.|\{(first|last)}~', $field)) {
+            throw new InvalidArgumentException("Use * only as a whole level below the top, with no escaped dot, {first} or {last}: {$field}.");
         }
     }
 
@@ -165,23 +199,13 @@ final readonly class SafeHtml
                 }
             })
             ->forceAttribute('a', 'rel', 'noopener noreferrer')
-            // Bounds time for deep nesting (100 KB: ~0.5 s), not memory: a 10 KB mix of distinct unclosed <b a=N> and
-            // <p>x makes the parser re-open every <b> in every <p> (1 s, 278 MB). memory_limit is the only ceiling.
-            ->withMaxInputLength(100_000);
+            ->withMaxInputLength(self::MAX_INPUT_BYTES);
 
-        foreach ([
-            'p', 'br', 'hr', 'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'sub', 'sup',
-            'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        ] as $element) {
+        foreach (self::FORMATTING_ELEMENTS as $element) {
             $policy = $policy->allowElement($element);
         }
 
-        // Dropped with their contents. Not style, link or meta: Symfony ignores head elements in a body, so they unwrap.
-        foreach ([
-            'script', 'iframe', 'object', 'embed', 'applet', 'form', 'input', 'button', 'select', 'option', 'optgroup',
-            'textarea', 'label', 'fieldset', 'template', 'noscript', 'base', 'frame', 'frameset', 'audio', 'video',
-            'source', 'track', 'canvas', 'portal', 'marquee', 'dialog', 'svg', 'math',
-        ] as $element) {
+        foreach (self::DROPPED_ELEMENTS as $element) {
             $policy = $policy->dropElement($element);
         }
 
